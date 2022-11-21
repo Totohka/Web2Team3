@@ -1,0 +1,64 @@
+CREATE TABLE RuleStocks(
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_RuleStocks_Id PRIMARY KEY CLUSTERED (Id), 
+  Rules nvarchar(50) NOT NULL
+)
+GO
+
+CREATE TABLE RuleDiscounts(
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_RuleDiscounts_Id PRIMARY KEY CLUSTERED (Id), 
+  Rules nvarchar(50) NOT NULL
+)
+GO
+
+CREATE TABLE Stock(
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_Stock_Id PRIMARY KEY CLUSTERED (Id), 
+  Title nvarchar(50) NOT NULL,
+  Id_rule int NOT NULL,
+  FOREIGN KEY (Id_rule) REFERENCES RuleStocks (Id) ON DELETE CASCADE,
+)
+GO
+
+CREATE TABLE Discount(
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_Discount_Id PRIMARY KEY CLUSTERED (Id), 
+  Title nvarchar(50) NOT NULL,
+  Id_rule int NOT NULL,
+  FOREIGN KEY (Id_rule) REFERENCES RuleDiscounts (Id) ON DELETE CASCADE,
+)
+GO
+
+CREATE TABLE Category(
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_Category_Id PRIMARY KEY CLUSTERED (Id), 
+  Title nvarchar(50) NOT NULL
+)
+GO
+
+CREATE TABLE Manufactor(
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_Manufactor_Id PRIMARY KEY CLUSTERED (Id), 
+  Title nvarchar(50) NOT NULL
+)
+GO
+
+CREATE TABLE Product (
+  Id int IDENTITY(1,1) NOT NULL,
+  CONSTRAINT PK_Product_Id PRIMARY KEY CLUSTERED (Id), 
+  Title nvarchar(50) NOT NULL,
+  IdCategory int NOT NULL, 
+  PriceBegin int NOT NULL,
+  PriceEnd int NOT NULL,
+  Amount int NOT NULL,
+  DatePuy date NOT NULL,
+  DateSale date NOT NULL,
+  IdManufactor int NULL,
+  IdStock int NULL,
+  IdDiscount int NULL,
+  FOREIGN KEY (IdCategory) REFERENCES Category (Id) ON DELETE CASCADE,
+    FOREIGN KEY (IdManufactor) REFERENCES Manufactor (Id) ON DELETE SET NULL,
+  FOREIGN KEY (IdDiscount) REFERENCES Discount (Id) ON DELETE SET NULL,
+  FOREIGN KEY (IdStock) REFERENCES Stock (Id) ON DELETE SET NULL,
+)
