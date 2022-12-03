@@ -1,25 +1,28 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.Drawing.Printing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Configuration;
 using System.Data.SqlClient;
-
+using MySql.Data.MySqlClient;
 using ZXing;
-using ZXing.Rendering;
-using ZXing.Common;
-using ZXing.QrCode;
+using barcodeB;
+using barcodeD;
 
 namespace barcode
 {
     public partial class Form1 : Form
     {
-        private SqlConnection sqlConnection = null;
+        string codeBar = BarCode.CodeBar;
+        int counter = 0; 
+        int curPage; 
+
         public Form1()
         {
             InitializeComponent();
@@ -29,76 +32,18 @@ namespace barcode
         {
             comboBox1.DropDownStyle = ComboBoxStyle.DropDown;
 
-            sqlConnection = new SqlConnection(ConfigurationManager.ConnectionStrings["DataBase"].ConnectionString);
-            sqlConnection.Open();
+            timer1.Interval = 60000;
+            timer1.Start();
 
-            if (sqlConnection.State == ConnectionState.Open)
-            {
+            DBShop.SqlConnection = new MySqlConnection(ConfigurationManager.ConnectionStrings["DataBase"].ConnectionString);
+            DBShop.SqlConnection.Open();
+
+            if (DBShop.SqlConnection.State == ConnectionState.Open){
                 MessageBox.Show("Подключение установлено");
             }
-        }
-
-        public static Image CreateCode(string text, int w, int h, BarcodeFormat format)
-        {
-            try
-            {
-                BarcodeWriter writer = new BarcodeWriter
-                {
-                    Format = format,
-                    Options = new QrCodeEncodingOptions
-                    {
-                        Width = w,
-                        Height = h,
-                        CharacterSet = "UTF-8"
-                    },
-                    Renderer = new BitmapRenderer()
-                };
-                return writer.Write(text);
+            else{
+                MessageBox.Show("Подключение не установлено");
             }
-            catch (Exception)
-            {
-                
-            }
-            return null;
-        }
-
-        public static string[] CodeScan(Bitmap bmp)
-        {
-            try
-            {
-                BarcodeReader reader = new BarcodeReader
-                {
-                    AutoRotate = true,
-                    TryInverted = true,
-                    Options = new DecodingOptions
-                    {
-                        TryHarder = true
-                    }
-                };
-                Result[] results = reader.DecodeMultiple(bmp);
-                if (results != null)
-                {
-                    return results.Where(x => x != null && !string.IsNullOrEmpty(x.Text)).Select(x => x.Text).ToArray();
-                }
-            }
-            catch(Exception)
-            {
-
-            }
-            return null;
-        }
-        
-        public static string DecodeImage(Image img)
-        {
-            string outString = "";
-            string[] results = CodeScan((Bitmap)img);
-
-            if (results != null)
-            {
-                outString = string.Join(Environment.NewLine + Environment.NewLine, results);
-            }
-
-            return outString;
         }
 
         private BarcodeFormat GetFormat()
@@ -114,50 +59,37 @@ namespace barcode
                 case "DATA_MATRIX": return BarcodeFormat.DATA_MATRIX;
                 default: return BarcodeFormat.CODABAR;
             }
-
-        }
-
-        private void button3_Click(object sender, EventArgs e)
-        {
-            //загрузка(не нужна)
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
             try
             {
-                MessageBox.Show(DecodeImage(pictureBox1.Image));
-
-                SqlDataAdapter dataAdapter = new SqlDataAdapter(
-                    $@"SELECT Product.Title AS Название, Category.Title AS Категория, Manufactor.Title AS Производитель, PriceEnd AS Стоимость from 
-                        Product INNER JOIN Category ON(Product.IdCategory = Category.Id)
-                        INNER JOIN Manufactor ON(Product.IdManufactor = Manufactor.Id)
-                    WHERE Product.Id = {DecodeImage(pictureBox1.Image)}", 
-                    sqlConnection
-                    );
-
+                codeBar = "";
                 DataSet dataSet = new DataSet();
-                dataAdapter.Fill(dataSet);
+                DataTable dataTable = new DataTable();
+                MySqlDataAdapter dataAdapter = new MySqlDataAdapter();
+                MySqlCommand command = new MySqlCommand($@"SELECT `product`.`name` AS `Название`, 
+                                                            `category`.`name` AS `Категория`, 
+                                                            `product`.`priceEnd` AS `Цена`, 
+                                                            `manufactor`.`name` AS `Производитель` 
+                                                        FROM `product` INNER JOIN `category` ON(`product`.`categoryId` = `category`.`id`) 
+                                                            INNER JOIN `manufactor` ON(`product`.`manufactorId` = `manufactor`.`id`) 
+                                                        WHERE `product`.`print` = 1",
+                                                        DBShop.SqlConnection);
+                dataAdapter.SelectCommand = command;
+                dataAdapter.Fill(dataTable);
 
-                string codeBar = "";
+                foreach (DataRow row in dataTable.Rows)
+                {
+                    var cells = row.ItemArray;
+                    foreach (object cell in cells)
+                        codeBar += cell + "   ";
+                    codeBar += '\n';
 
-                foreach (DataTable dt in dataSet.Tables)
-                {                                                    
-                    foreach (DataColumn column in dt.Columns)
-                        codeBar += column.ColumnName + "   "; // все названия колонок
-                    codeBar += "\n";
-                    // перебор всех строк таблицы
-                    foreach (DataRow row in dt.Rows)
-                    {
-                        // получаем все ячейки строки
-                        var cells = row.ItemArray;
-                        foreach (object cell in cells)
-                            codeBar += cell + "   ";
-                        codeBar += "\n";
-                    }
                 }
+                pictureBox1.Image = BarCode.CreateCode(codeBar, pictureBox1.Width, pictureBox1.Height, GetFormat());
                 MessageBox.Show(codeBar);
-                //MessageBox.Show(DecodeImage(pictureBox1.Image));
             }
             catch (Exception)
             {
@@ -165,14 +97,91 @@ namespace barcode
             }
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void timer1_Tick(object sender, EventArgs e)
         {
-            //сохранение не нужно
+            try
+            {
+                if (DateTime.Now.Hour == 15 && (DateTime.Now.Minute == 0))
+                {
+                    DataSet dataSet = new DataSet();
+                    DataTable dataTable = new DataTable();
+                    MySqlDataAdapter dataAdapter = new MySqlDataAdapter();
+                    MySqlCommand command = new MySqlCommand($@"UPDATE `product`
+                                                            SET `print` = false 
+                                                            WHERE `print` = true",
+                                                            DBShop.SqlConnection);
+
+                    PrintDocument printDocument = new PrintDocument();
+                    printDocument.BeginPrint += BeginPrint;
+                    printDocument.PrintPage += PrintPageHandler;
+                    PrintDialog printDialog = new PrintDialog();
+                    printDialog.Document = printDocument;
+                    if (printDialog.ShowDialog() == DialogResult.OK)
+                        printDialog.Document.Print(); // печатаем
+                    dataAdapter.SelectCommand = command;
+                    dataAdapter.Fill(dataTable);
+                }
+            }
+            catch(Exception ex)
+            {
+                MessageBox.Show(ex.ToString());
+            }
         }
 
-        private void textBox1_TextChanged(object sender, EventArgs e)
+        private void BeginPrint(object sender, PrintEventArgs e)
         {
-            pictureBox1.Image = CreateCode(textBox1.Text, pictureBox1.Width, pictureBox1.Height, GetFormat());
+            counter = 0;
+            curPage = 1;
+        }
+
+        void PrintPageHandler(object sender, PrintPageEventArgs e)
+        {
+            int y = 0;
+            DataSet dataSet = new DataSet();
+            DataTable dataTable = new DataTable();
+            MySqlDataAdapter dataAdapter = new MySqlDataAdapter();
+            MySqlCommand command = new MySqlCommand($@"SELECT `product`.`name` AS `Название`, 
+                                                            `category`.`name` AS `Категория`, 
+                                                            `product`.`priceEnd` AS `Цена`, 
+                                                            `manufactor`.`name` AS `Производитель` 
+                                                        FROM `product` INNER JOIN `category` ON(`product`.`categoryId` = `category`.`id`) 
+                                                            INNER JOIN `manufactor` ON(`product`.`manufactorId` = `manufactor`.`id`) 
+                                                        WHERE `product`.`print` = 1",
+                                                    DBShop.SqlConnection);
+            dataAdapter.SelectCommand = command;
+            dataAdapter.Fill(dataTable);
+
+            int nLines = (int)e.MarginBounds.Height / (166);
+            int nPages = (int)dataTable.Rows.Count / nLines + 1;
+
+            int i = 0;
+            DataRow row;
+
+            for (int iterator = 0; iterator < dataTable.Rows.Count; iterator++)
+            {
+                row = dataTable.Rows[counter];
+                var cells = row.ItemArray;
+                foreach (object cell in cells)
+                    codeBar += cell + "   ";
+                codeBar = codeBar.Insert(codeBar.IndexOf(',') + 3, "₽");
+                e.Graphics.DrawImage(BarCode.CreateCode(codeBar, 150, 150, GetFormat()), e.PageBounds.X, y, 150, 150);
+                y += 150;
+                e.Graphics.DrawString(codeBar, new Font("Arial", 7), Brushes.Black, 0, 2 + y);
+                y += 16;
+                codeBar = "";
+                i += 1;
+                counter += 1;
+                if (i >= nLines || counter >= dataTable.Rows.Count)
+                {
+                    break;
+                }
+            }
+
+            e.HasMorePages = false;
+            if (curPage < nPages) {
+                curPage += 1;
+                e.HasMorePages = true;
+            }
         }
     }
 }
